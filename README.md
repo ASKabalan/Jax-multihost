@@ -26,6 +26,7 @@ When executing JAX code on a single machine, particularly with multiple GPUs, ce
   - [Example](#example-1)
   - [Classic PositionalSharding in Multi-controller setup](#classic-positionalsharding-in-multi-controller-setup)
   - [Reshaping a GlobalDeviceShard](#reshaping-a-globaldeviceshard)
+- [Bonus : Splitting, Slicing and Gathering data in a multi controller setup](#bonus--splitting-slicing-and-gathering-data-in-a-multi-controller-setup)
 
 
 
@@ -395,4 +396,12 @@ pspecs = PartitionSpec('a', 'b')
 arr4_2 = multihost_utils.host_local_array_to_global_array(xs, mesh, pspecs)
 ```
 
-__Note:__ this doesn't work and it shows this error  `chunked = sharding[axis] IndexError: list index out of range` so this section is WIP
+Just make sure that your array is divisible by b for example :
+
+```python
+x = jax.random.normal(jax.random.PRNGKey(0), (8192, 8192))
+```
+
+
+# Bonus : Splitting, Slicing and Gathering data in a multi controller setup
+
