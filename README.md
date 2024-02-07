@@ -657,14 +657,13 @@ Once we have a global non-fully adressable array, we can get the global shape of
 
 In case you want to load data from one source and not by slices, things get a bit harder.
 
-you can use this API from jax [make_array_from_callback](https://jax.readthedocs.io/en/latest/_autosummary/jax.make_array_from_callback.html#jax.make_array_from_callback).
+You can use this API from JAX [make_array_from_callback](https://jax.readthedocs.io/en/latest/_autosummary/jax.make_array_from_callback.html#jax.make_array_from_callback).
 
-The word call back on jax seems to only refer to calling this on the host (CPU).
+The word "callback" in JAX seems to only refer to calling this on the host (CPU).
 
-In this case we can load data from CPU (numpy) to directly sharded GPU array
+In this case, we can load data from CPU (NumPy) to a directly sharded GPU array.
 
-Example 1 :
-
+**Example 1 :**
 
 ```python
 import numpy as np
@@ -702,8 +701,7 @@ This did work as intended but we have to keep in mind that `array = np.random.no
 
 Unfortunately, JAX does not provide `pscatter` and `pbroadcast`. It does provide `ppermute`, but it will be a pain to implement (and more importantly, inefficient).
 
-
-In this case we can use MPI collectives :
+In this case, we can use MPI collectives:
 
 ```python
 from mpi4py import MPI
@@ -749,8 +747,8 @@ print(arr.addressable_shards[0].data.shape) #(128, 128)
 ```
 
 But does it give the right array?\
-We need to be carefull and match the `index` that is given by the call back.\
-If we missmatch the slices, the collectives communcations might not accessing the right data.
+We need to be careful and match the `index` that is given by the callback.\
+If we mismatch the slices, the collective communications might not access the right data.
 
 We can test this for the simple case 
 
@@ -787,8 +785,11 @@ print(arr.addressable_shards[0].data.shape) #(128, 128)
 
 ```
 
-This works fine, but if we try a different decomposition (such as a 2d sharding) this won't work.\
-In case of 2D Pencil decompositon (4 , 2) the splits are still 8 slices of 128 by 128 but the decomposition slices are 8 slices of 256 by 64. We have to modify the splitting function to be 2D decomposition compatible.
+This works fine, but if we try a different decomposition (such as a 2D sharding) this won't work.\
+In case of 2D Pencil decomposition (4, 2), the splits are still 8 slices of 128 by 128, but the decomposition slices are 8 slices of 256 by 64. We have to modify the splitting function to be 2D decomposition compatible.
+
+**Example 2 :**
+
 
 ```python
 def split_array2d(arr, row_splits, col_splits):
