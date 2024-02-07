@@ -32,6 +32,7 @@ When executing JAX code on a single machine, particularly with multiple GPUs, ce
   - [5.5. global\_shards vs addressable\_shards](#55-global_shards-vs-addressable_shards)
   - [5.6. Getting the shape of the data](#56-getting-the-shape-of-the-data)
 - [6. Loading data from a single source to multiple controller devices](#6-loading-data-from-a-single-source-to-multiple-controller-devices)
+- [7. Collective communications](#7-collective-communications)
 
 # 2. Data layout and memory allocation in distributed computing
 
@@ -74,9 +75,9 @@ Notice that we still allocate 4 GPUs but there are 4 GPUs per node. In total we 
 
 ## 3.3. Simulating on CPU
 
-If you don't have access to multi GPU and/or multi node setup you can simulate anything in this tutorial on CPU.
+If you don't have access to multi GPU and/or multi node setup you can simulate anything in this tutorial on CPU (except [7. Collective communications](#7-collective-communications)).
 
-First make sure that you have `mpi` (cuda or not cuda aware) and the `jax` cpu variant
+First make sure that you have `mpi` (cuda aware or not) and the `jax` cpu variant
 
 ```bash
 pip install --upgrade pip
@@ -84,9 +85,9 @@ CFLAGS=-noswitcherror pip install mpi4py
 pip install --upgrade "jax[cpu]"
 ```
 
-`CFLAGS=-noswitcherror` is necessary if your compiler is NVIDIA's `nvc` or `nvc++` instead of `gcc` or `g++` respectively (`echo $CC && echo $CXX` to check). Do this instead for `mpi4py`.
+`CFLAGS=-noswitcherror` is necessary if your compiler is NVIDIA's `nvc` or `nvc++` instead of `gcc` or `g++` respectively (`echo $CC && echo $CXX` to check).
 
-Next check how many CPU core you have using `nproc` (for linux) this is how many *fake nodes* you can simulate
+Next check how many CPU core you have using `nproc` (for linux), this is how many *fake nodes* you can simulate.
 
 Next use this to tell XLA to treat multiple cpu threads as if they where multiple devices (in this example each *node* has 8 devices)
 
@@ -116,7 +117,7 @@ import jax
 jax.devices()
 #out : [cuda(id=0),cuda(id=1),cuda(id=2),cuda(id=3)]
 ```
-Whenevey you call any jax array API (using `jax.numpy` functions or `jax.random.normal` for example) you allocate some memory on the accelerator (or device for simplicity) which could be a GPU or TPU, and it is allocate on the default (the first) device in the `jax.device()` list. For example in a multi GPU setup the device would be `cuda(id=0)`
+Whenever you call any jax array API (using `jax.numpy` functions or `jax.random.normal` for example) you allocate some memory on the accelerator (or device for simplicity) which could be a GPU or TPU, and it is allocated on the default (the first) device in the `jax.device()` list. For example in a multi GPU setup the device would be `cuda(id=0)`
 
 ```python
 a = jax.random.normal(jax.random.PRNGKey(0), (5,5))
@@ -136,16 +137,18 @@ Here is a diagram of what single controller looks like
     <img src="assests/single.png" alt="Alt">
 </div>
 
+
+\
 __note:__ JAX is always multicontroller from what I understood, but for simplicity I will call it single controller when there is one process launched by the end user (that's you) even if JAX launches multiple processes under the hood.
 
 ## 3.5. Multi controller for multiple nodes 
 
-Think of a node as a personal computer. You have multiple components, multiple RAM slots, multiple PCIe lanes but one motherboard and one case.
+Think of a node as a personal computer. You have multiple components, multiple RAM slots, multiple PCIe lanes but one motherboard and one case (generally).
 
 One motherboard can take a finite amount of GPUs because it has a finite amount of PCIeX16 lanes for example\
 If you wanna go further to use multiple GPUs from multiple machines you can no longer use only one controller. In HPC and in supercomputers we call that having multiple nodes.
 
-Check how many nodes does [Jean-Zay](http://www.idris.fr/jean-zay/cpu/jean-zay-cpu-hw.html) or [Perlmutter](https://docs.nersc.gov/systems/perlmutter/architecture/#system-specifications) have for example 
+Check how many nodes does [Jean-Zay](http://www.idris.fr/jean-zay/cpu/jean-zay-cpu-hw.html) or [Perlmutter](https://docs.nersc.gov/systems/perlmutter/architecture/#system-specifications) have for example.
 
 If we wanna do jax on 2 nodes and beyond, we have to use multi controller setup, using `mpirun` or `srun` and specifying the exact architecture we are targeting.
 
@@ -157,7 +160,7 @@ In this case here is what a single controller setup (process) looks like :
 
 we can do this for example by calling `mpiexec -np 2 python some_script.py`.
 
-The most important thing to note that unlike what we have in a single controller setup, each line is executed n times where n is the number of controller, this means that in a setup similar to what we have in the diagram we will get this.
+The most important thing to note that unlike what we have in a single controller setup, each line is executed `n` times where `n` is the number of controllers, this means that in a setup similar to what we have in the diagram we will get this.
 
 ```python
 import jax
@@ -167,7 +170,8 @@ print(jax.devices())
 ```
 We get the same output twice (for each process) of 4 GPUs, in fact the line `print(jax.devices())` was executed twice and cuda(id=0) is not the same gpu as cuda(id=0) in the second line.
 
-We need to call `jax.distributed.initialize()` check a simple (but not very rich guide) in [jax.readthedocs.io](https://jax.readthedocs.io/en/latest/multi_process.html) on multi host jax environment
+We need to call `jax.distributed.initialize()` in order to notify jax that we will be handling the distribution.\
+check a simple (but not very rich guide) in [jax.readthedocs.io](https://jax.readthedocs.io/en/latest/multi_process.html) on multi host jax environment
 
 ```python
 import jax
@@ -181,9 +185,9 @@ print(jax.local_devices())
 ```
 
 This makes more sense, now we print these two lines two times two for each process\
-We say that each node sees that there are 4 other GPUs in the other node and the second one knows that it's default GPU is called cuda(id=5) instead of cuda(id=0)\
+We say that each node sees that there are 4 other GPUs in the other node and the second one knows that it's default GPU is called `cuda(id=5)` instead of `cuda(id=0)`\
 Each node process can *address* its four GPU but not the others, so they are not *addressable* to it.\
-In the previous solid lines represents *addressable* devices and dotted lines represent *non-addressable* devices
+In the previous diagram, solid lines represents *addressable* devices and dotted lines represent *non-addressable* devices
 
 __note:__ when using `mpi` or `srun` you don't need to assign an ip address, you can just call the function with no arguments
 
@@ -247,7 +251,7 @@ It basically descibes how is the data split on multiple devices and it tells [La
 ## 4.1. Sharding Properties
 
 
-1. [addressable_devices](https://jax.readthedocs.io/en/latest/jax.sharding.html#jax.sharding.Sharding.addressable_devices): Represents the group of devices that this sharding can adress, for single controller setup all devices are always adressable. For single controller per GPU only one device is adressable by default for each sharding on each process.
+1. [addressable_devices](https://jax.readthedocs.io/en/latest/jax.sharding.html#jax.sharding.Sharding.addressable_devices): Represents the group of devices that this sharding can address, for single controller setup all devices are always adressable. For single controller per GPU only one device is adressable by default for each sharding on each process.
 2. [device_set](https://jax.readthedocs.io/en/latest/jax.sharding.html#jax.sharding.Sharding.device_set): Represents the group of devices spanned by a specific sharding. In a multi-controller environment, this set includes devices that may not be directly addressable by the current process. For signle controller this will always be equivalent to `addressable_devices`
 3. [is_fully_addressable](https://jax.readthedocs.io/en/latest/jax.sharding.html#jax.sharding.Sharding.is_fully_addressable): Indicates whether all devices named in the Sharding are accessible by the current process. This property is analogous to is_local in a multi-process JAX setup.
 4. [is_fully_replicated](https://jax.readthedocs.io/en/latest/jax.sharding.html#jax.sharding.SingleDeviceSharding.is_fully_replicated): Determines if each device holds a complete copy of the entire data. A sharding is fully replicated when this condition is met.
@@ -279,7 +283,7 @@ You can find a detailed [example here ](https://jax.readthedocs.io/en/latest/not
 
 # 5. Loading and efficiently distruting data using shardings
 
-In this part, we will discuss how to we put our data in device according to data specific or algorithme specific layouts.
+In this part, we will discuss how can we put our data in a or multiple device(s) according to data specific or algorithme specific layouts.
 
 ## 5.1. on Single host multi GPU
 
@@ -298,15 +302,7 @@ sharding = PositionalSharding(mesh_utils.create_device_mesh((4,)))
 
 # Create an array of random values:
 x = jax.random.normal(jax.random.PRNGKey(0), (4096, 4096))
-# and use jax.device_put to distribute it across devices:
-y = jax.device_put(x, sharding.reshape(4, 1))
 jax.debug.visualize_array_sharding(y)
-
-x = jax.device_put(x, sharding.reshape(2, 2))
-jax.debug.visualize_array_sharding(x)
-
-x = jax.device_put(x, sharding.reshape(1, 4))
-jax.debug.visualize_array_sharding(x)
 ```
 
 We can see how trivial it is to change the sharding shape to fit different distribution needs.\
@@ -386,11 +382,9 @@ produces these shardings
 └───────────────────────┘
 ```
 
-All of this is very trivial but there is a caveat, single controller (as in single process launched by you) is not scallable because it assumes that you are running on a single node. For JeanZay for example a V100 has quadri-core gpus and the A100 partition has octo-core, which means if we want to do anything on more that 8 GPUs this [Single host multi GPU](#single-host-multi-gpu) won't work.
-
 ## 5.2. Multiple controller (one GPU per controller)
 
-Single controller means single node, which means it is not scallable, for JeanZay for example a V100 has quadricore gpus and the A100 partition has octo-core, which means if we want to do anything on more that 8 GPUs this [Single host multi GPU](#single-host-multi-gpu) won't work.
+Single controller means single node, which means it is not scallable, for JeanZay for example a V100 has quadricore gpus and the A100 partition has octo-core, which means if we want to do anything on more that 8 GPUs this [example](#511-example) won't work.
 
 
 ### 5.2.1. Example
@@ -449,16 +443,16 @@ When we visualize the shardings we see the sharding layout 8 times for each gpus
 └───────────────┘
 ```
 
-If we check if the sharding is adressable we get `True`, our 8 part arrays are also `fully_replicated` which we mentionend in [Sharding Properties](#sharding-properties) which means that each device has a complete copy of the entire data which is not our case, so what is really happening.
+If we check if the sharding is addressable we get `True`, our 8 part arrays are also `fully_replicated` which we mentionend in [Sharding Properties](#sharding-properties) which means that each device has a complete copy of the entire data which is not our case, the global data is split among 8 devices. So what is really happening.
 
-In case of multi controller each code is called n times as we mentionned before, so this line 
+In case of multi controller each code is called `n` times as we mentionned before, so this line 
 
 ```python
 xs = jax.numpy.ones(jax.local_device_count())
 ```
 
 Is called n times and each of the devices is allocating a slice of the data that is fully addressable and fully replicable for each controller, but they are not globally.\
-In other words each process can access it's data so it is adressable for this given process and it has a full copy of its data so it's replicable for this given process.
+In other words each process can access it's data so it is addressable for this given process and it has a full copy of its data so it's replicable for this given process.
 
 What does this mean for sharding reshape like we did earler?
 
@@ -620,8 +614,9 @@ This is the vizualisation
 ## 5.5. global_shards vs addressable_shards
 
 Each Jax array (starting from jaxv0.4) has a list of `global_shards` and a list of `addressable_shards`.\
-As you might guess `global_shards` is equivalent to `addressable_shards` in a 
- 
+As you might guess `global_shards` is equivalent to `addressable_shards` in a single controller setup
+
+Following with our example 
 
 ```python
 global_shards : 
@@ -638,7 +633,7 @@ global_shards :
 ```
 
 
-Notice that all but `device=cuda(id=1)` have `data=None` but each devices knows the indexes of non adressable data from other shards
+Notice that all but `device=cuda(id=1)` have `data=None` which implies that each of the devices knows the indexes of non adressable data from other shards but only has direct access to its data only
 
 Adressable shards is only `device=cuda(id=1)` for this particular global array from this process
 
@@ -649,10 +644,7 @@ addressable_shards :
 ]
 ```
 
-Other process will output the same global_shards but their addressable data only while the others are all `None`
-
-
-if fully addressable then global shards = addressable shards
+Other process will output the same global_shards but with their addressable data only while the others data are all `None`
 
 ## 5.6. Getting the shape of the data
 
@@ -710,27 +702,25 @@ Unfortunalty lax does not provide `pscatter` and `pbroadcast` it does provide `p
 
 In this case we can use MPI collectives :
 
-from mpi4py import MPI
-
-
 ```python
+from mpi4py import MPI
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 size = comm.Get_size()
 
 def create_and_scatter_numpy_array(func:callable, **kwargs):
+    
+    array_split = None
     if rank == 0:
         # Allocate the array on the root process
         array = func(**kwargs)
-        print(f"Intial Process {rank} has array {array.shape}") # size=(1024, 128)
-    else:
-        array = None
-
-    # Split the array into 8 pieces on the root process
-    if rank == 0:
         array_split = np.array_split(array, size)
-    else:
-        array_split = None
+        print(f"Intial Process {rank} has array {array.shape}") # size=(1024, 128)
+        print(f"Intial Process {rank} has array split {len(array_split)}") # list of 8
+        print(f"Intial Process {rank} has array split shape {array_split[0].shape}") # shape=(128,128)
+
+
+    # Scatter the single process array from rank 0 to all other process
     array_piece = comm.scatter(array_split, root=0)
 
     return array_piece
@@ -755,4 +745,115 @@ print(arr.addressable_shards[0].data.shape) #(128, 128)
 
 ```
 
-the callback has to be more intelligent to handle pencil distributions
+But does it give the right array?\
+We need to be carefull and match the `index` that is given by the call back.\
+If we missmatch the slices, the collectives communcations might not accessing the right data.
+
+We can test this for the simple case 
+
+
+```python
+# Create a generator object
+rng = np.random.default_rng(42)  # Seed for the global array
+# Generate random numbers
+array = rng.normal(size=(128,128))
+input_shape = array.shape
+
+#Make sure that the splits are the same exact global array
+rng = np.random.default_rng(42)  # Seed for the scattered array
+array_piece = create_and_scatter_numpy_array(rng.normal,split_shape=sharding_shape , size=(128, 128))
+
+array_piece = create_and_scatter_numpy_array(np.random.normal, size=(1024, 128))
+print(f"Process {rank} has array piece {array_piece.shape}") # size=(128, 128)
+input_shape = (128 , 128)
+
+def cb(index):
+    # Check if the scattered array matches the indices
+    assert(not False in (array_piece == array[index]))
+    return array_piece
+
+jax.distributed.initialize()
+
+devices = mesh_utils.create_device_mesh((8,))
+global_mesh = Mesh(devices, axis_names=('a'))
+inp_sharding = jax.sharding.NamedSharding(global_mesh,P('a'))
+arr = jax.make_array_from_callback(input_shape, inp_sharding, cb)
+
+print(arr.shape) #(1024,128)
+print(arr.addressable_shards[0].data.shape) #(128, 128) 
+
+```
+
+This works fine, but if we try a different decomposition (such as a 2d sharding) this won't work.\
+In case of 2D Pencil decompositon (4 , 2) the splits are still 8 slices of 128 by 128 but the decomposition slices are 8 slices of 256 by 64. We have to modify the splitting function to be 2D decomposition compatible.
+
+```python
+def split_array2d(arr, row_splits, col_splits):
+    """Split an array into a custom number of row and column splits."""
+    row_height = arr.shape[0] // row_splits
+    col_width = arr.shape[1] // col_splits
+    result = []
+    for r in range(row_splits):
+        for c in range(col_splits):
+            start_row = r * row_height
+            end_row = (r + 1) * row_height
+            start_col = c * col_width
+            end_col = (c + 1) * col_width
+            result.append(arr[start_row:end_row, start_col:end_col])
+    return result
+
+def split_array(arr, splits, axis=0):
+    """Split an array for scattering """
+    if isinstance(splits, int):
+        return np.array_split(arr, splits, axis=axis)
+    elif isinstance(splits,tuple):
+        return split_array2d(arr, splits[0], splits[1])
+
+def create_and_scatter_numpy_array(func:callable,split_shape, **kwargs):
+    
+    array_split = None
+    if rank == 0:
+        # Allocate the array on the root process
+        array = func(**kwargs)
+        array_split = split_array(array,split_shape )
+    # Split the array into 8 pieces on the root process
+    array_piece = comm.scatter(array_split, root=0)
+
+    return array_piece
+
+
+sharding_shape = (4,2)
+# Create a generator object
+rng = np.random.default_rng(42)  # seed for global array
+# Generate random numbers
+array = rng.normal(size=(1024,128))
+input_shape = array.shape
+
+rng = np.random.default_rng(42)  # seed for scattered array
+array_piece = create_and_scatter_numpy_array(rng.normal,split_shape=sharding_shape , size=(1024, 128))
+# Scatter the pieces of the array to all processes
+print(f"Process {rank} has array piece {array_piece.shape}") # size=(256,64)
+# Now, array_piece contains a piece of the array on each process
+
+def cb(index):
+    # Check if the scattered array matches the indices
+    assert(not False in (array_piece == array[index])) # Passes 🎉  🎉
+    return array_piece
+
+jax.distributed.initialize()
+
+devices = mesh_utils.create_device_mesh(sharding_shape)
+global_mesh = Mesh(devices, axis_names=('a', 'b'))
+inp_sharding = jax.sharding.NamedSharding(global_mesh,P('a', 'b'))
+
+XY_Pencil = jax.make_array_from_callback(input_shape, inp_sharding, cb)
+
+transposed_sharding = jax.sharding.NamedSharding(global_mesh,P('b' ,'a'))
+YZ_Pencil = jax.make_array_from_callback(input_shape, transposed_sharding, cb)
+
+jax.distributed.shutdown()
+```
+
+# 7. Collective communications 
+
+WIP
