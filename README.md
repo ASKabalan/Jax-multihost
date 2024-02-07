@@ -36,7 +36,7 @@ When executing JAX code on a single machine, particularly with multiple GPUs, ce
 
 # 2. Data layout and memory allocation in distributed computing
 
-Before diving any deeper, I will illustrate different types and memory allocation management in distributed computing and how jax uses different distribution techniques for inter GPU communications or collectives
+Before diving any deeper, I will illustrate different types of memory allocation management in distributed computing and how JAX uses different distribution techniques for inter-GPU communications or collectives.
 
 If you don't know what collectives mean I highly suggest [this wikipedia page](https://en.wikipedia.org/wiki/Collective_operation) and this [NCCL tutorial](https://docs.nvidia.com/deeplearning/nccl/archives/nccl_2183/user-guide/docs/usage/collectives.html#)
 
@@ -139,14 +139,13 @@ Here is a diagram of what single controller looks like
 
 
 \
-__note:__ JAX is always multicontroller from what I understood, but for simplicity I will call it single controller when there is one process launched by the end user (that's you) even if JAX launches multiple processes under the hood.
+__note:__ JAX is always multi-controller from what I understood, but for simplicity I will call it single controller when there is one process launched by the end user (that's you) even if JAX launches multiple processes under the hood.
 
 ## 3.5. Multi controller for multiple nodes 
 
 Think of a node as a personal computer. You have multiple components, multiple RAM slots, multiple PCIe lanes but one motherboard and one case (generally).
 
-One motherboard can take a finite amount of GPUs because it has a finite amount of PCIeX16 lanes for example\
-If you wanna go further to use multiple GPUs from multiple machines you can no longer use only one controller. In HPC and in supercomputers we call that having multiple nodes.
+One motherboard can take a finite amount of GPUs because it has a finite amount of PCIe x16 lanes, for example. If you want to go further and use multiple GPUs from multiple machines, you can no longer use only one controller. In HPC and in supercomputers, we call that having multiple nodes.
 
 Check how many nodes does [Jean-Zay](http://www.idris.fr/jean-zay/cpu/jean-zay-cpu-hw.html) or [Perlmutter](https://docs.nersc.gov/systems/perlmutter/architecture/#system-specifications) have for example.
 
@@ -160,7 +159,7 @@ In this case here is what a single controller setup (process) looks like :
 
 we can do this for example by calling `mpiexec -np 2 python some_script.py`.
 
-The most important thing to note that unlike what we have in a single controller setup, each line is executed `n` times where `n` is the number of controllers, this means that in a setup similar to what we have in the diagram we will get this.
+The most important thing to note is that, unlike what we have in a single controller setup, each line is executed `n` times where `n` is the number of controllers. This means that in a setup similar to what we have in the diagram, we will get this.
 
 ```python
 import jax
@@ -168,10 +167,10 @@ print(jax.devices())
 #out : [cuda(id=0),cuda(id=1),cuda(id=2),cuda(id=3)]
 #out : [cuda(id=0),cuda(id=1),cuda(id=2),cuda(id=3)]
 ```
-We get the same output twice (for each process) of 4 GPUs, in fact the line `print(jax.devices())` was executed twice and cuda(id=0) is not the same gpu as cuda(id=0) in the second line.
+We get the same output twice (for each process) of 4 GPUs. In fact, the line `print(jax.devices())` was executed twice, and `cuda(id=0)` is not the same GPU as `cuda(id=0)` in the second line.
 
-We need to call `jax.distributed.initialize()` in order to notify jax that we will be handling the distribution.\
-check a simple (but not very rich guide) in [jax.readthedocs.io](https://jax.readthedocs.io/en/latest/multi_process.html) on multi host jax environment
+We need to call `jax.distributed.initialize()` in order to notify JAX that we will be handling the distribution.\
+Check a simple (but not very rich) guide on multi-host JAX environment at [jax.readthedocs.io](https://jax.readthedocs.io/en/latest/multi_process.html).
 
 ```python
 import jax
@@ -184,10 +183,10 @@ print(jax.local_devices())
 #out : [cuda(id=4), cuda(id=5), cuda(id=6), cuda(id=7)]
 ```
 
-This makes more sense, now we print these two lines two times two for each process\
-We say that each node sees that there are 4 other GPUs in the other node and the second one knows that it's default GPU is called `cuda(id=5)` instead of `cuda(id=0)`\
-Each node process can *address* its four GPU but not the others, so they are not *addressable* to it.\
-In the previous diagram, solid lines represents *addressable* devices and dotted lines represent *non-addressable* devices
+This makes more sense, now we print these two lines two times for each process.\
+We say that each node sees that there are 4 other GPUs in the other node, and the second one knows that its default GPU is called `cuda(id=5)` instead of `cuda(id=0)`.\
+Each node process can *address* its four GPUs but not the others, so they are not *addressable* to it.\
+In the previous diagram, solid lines represent *addressable* devices, and dotted lines represent *non-addressable* devices.
 
 __note:__ when using `mpi` or `srun` you don't need to assign an ip address, you can just call the function with no arguments
 
@@ -203,12 +202,12 @@ print(f"Process {jax.process_index()} local devices : {jax.local_devices()}")
 
 ```
 
-__Note:__ order is never guarenteed in multi controller calls, the only way to ensure that two steps do not interfer with each other is be using [sync_global_devices](https://jax.readthedocs.io/en/latest/_autosummary/jax.experimental.multihost_utils.sync_global_devices.html#jax.experimental.multihost_utils.sync_global_devices) which is similar to `MPI_Barrier` for those who are familiar with MPI, on CPU `sync_global_devices` does not work, you have to use [comm.Barrier()](https://mpi4py.readthedocs.io/en/stable/reference/mpi4py.MPI.Comm.html?highlight=barrier#mpi4py.MPI.Comm.barrier)
+__Note:__ order is never guaranteed in multi controller calls, the only way to ensure that two steps do not interfere with each other is by using [sync_global_devices](https://jax.readthedocs.io/en/latest/_autosummary/jax.experimental.multihost_utils.sync_global_devices.html#jax.experimental.multihost_utils.sync_global_devices) which is similar to `MPI_Barrier` for those who are familiar with MPI, on CPU `sync_global_devices` does not work, you have to use [comm.Barrier()](https://mpi4py.readthedocs.io/en/stable/reference/mpi4py.MPI.Comm.html?highlight=barrier#mpi4py.MPI.Comm.barrier)
 
 
 ## 3.6. A single Controller per GPU
 
-For maximum scalability we would start a process per GPU (check the slurm scripts for more info on how to do this)
+For maximum scalability, we would start a process per GPU (check the Slurm scripts for more info on how to do this).
 
 This is the diagram: 
 
@@ -251,9 +250,9 @@ It basically descibes how is the data split on multiple devices and it tells [La
 ## 4.1. Sharding Properties
 
 
-1. [addressable_devices](https://jax.readthedocs.io/en/latest/jax.sharding.html#jax.sharding.Sharding.addressable_devices): Represents the group of devices that this sharding can address, for single controller setup all devices are always adressable. For single controller per GPU only one device is adressable by default for each sharding on each process.
-2. [device_set](https://jax.readthedocs.io/en/latest/jax.sharding.html#jax.sharding.Sharding.device_set): Represents the group of devices spanned by a specific sharding. In a multi-controller environment, this set includes devices that may not be directly addressable by the current process. For signle controller this will always be equivalent to `addressable_devices`
-3. [is_fully_addressable](https://jax.readthedocs.io/en/latest/jax.sharding.html#jax.sharding.Sharding.is_fully_addressable): Indicates whether all devices named in the Sharding are accessible by the current process. This property is analogous to is_local in a multi-process JAX setup.
+1. [addressable_devices](https://jax.readthedocs.io/en/latest/jax.sharding.html#jax.sharding.Sharding.addressable_devices): Represents the group of devices that this sharding can address. For a single controller setup, all devices are always addressable. For a single controller per GPU, only one device is addressable by default for each sharding on each process.
+2. [device_set](https://jax.readthedocs.io/en/latest/jax.sharding.html#jax.sharding.Sharding.device_set): Represents the group of devices spanned by a specific sharding. In a multi-controller environment, this set includes devices that may not be directly addressable by the current process. For a single controller, this will always be equivalent to `addressable_devices`.
+3. [is_fully_addressable](https://jax.readthedocs.io/en/latest/jax.sharding.html#jax.sharding.Sharding.is_fully_addressable): Indicates whether all devices named in the Sharding are accessible by the current process. This property is analogous to `is_local` in a multi-process JAX setup.
 4. [is_fully_replicated](https://jax.readthedocs.io/en/latest/jax.sharding.html#jax.sharding.SingleDeviceSharding.is_fully_replicated): Determines if each device holds a complete copy of the entire data. A sharding is fully replicated when this condition is met.
 
 
@@ -283,7 +282,7 @@ You can find a detailed [example here ](https://jax.readthedocs.io/en/latest/not
 
 # 5. Loading and efficiently distruting data using shardings
 
-In this part, we will discuss how can we put our data in a or multiple device(s) according to data specific or algorithme specific layouts.
+In this part, we will discuss how we can put our data in one or multiple devices according to data-specific or algorithm-specific layouts.
 
 ## 5.1. on Single host multi GPU
 
@@ -306,7 +305,7 @@ jax.debug.visualize_array_sharding(y)
 ```
 
 We can see how trivial it is to change the sharding shape to fit different distribution needs.\
-Let's visualize the sharding of `x` we call `jax.debug.visualize_array_sharding` and get.
+Let's visualize the sharding of `x` we call `jax.debug.visualize_array_sharding(x)` and get.
 
 
 ```
@@ -323,8 +322,7 @@ Let's visualize the sharding of `x` we call `jax.debug.visualize_array_sharding`
 └───────────────────────┘
 ```
 
-Which makes sense, in a single controller multi device, when we allocate anything it is sent to the main GPU (the first one).\
-when we reshape the sharding like this :
+Which makes sense, in a single controller multi device, when we allocate anything, it is sent to the main GPU (the first one).
 
 ```python
 y = jax.device_put(x, sharding.reshape(2, 2))
@@ -384,7 +382,7 @@ produces these shardings
 
 ## 5.2. Multiple controller (one GPU per controller)
 
-Single controller means single node, which means it is not scallable, for JeanZay for example a V100 has quadricore gpus and the A100 partition has octo-core, which means if we want to do anything on more that 8 GPUs this [example](#511-example) won't work.
+Single controller means single node, which means it is not scalable. For JeanZay, for example, a V100 has quad-core GPUs and the A100 partition has octo-core. This means that if we want to do anything on more than 8 GPUs, this [example](#511-example) won't work.
 
 
 ### 5.2.1. Example
@@ -395,10 +393,8 @@ To begin we need to call this before doing any computation with jax
 jax.distributed.initialize()
 ```
 
-Next we can print `jax.device_count()` and `jax.local_device_count()` and we can see that they do not have the same count, as opposed to the single controller case.\
-A very important change is the fact that every single line of code is being ran 8 times (in our case) in the previous case we had one controller, so every line ran once except for the `pmaped` function of course because `pmap` is an implicit parallel call
-
-We can print a debug message only once like this :
+if curr_id == 0:
+    print("A very important change is the fact that every single line of code is being ran 8 times (in our case) in the previous case we had one controller, so every line ran once except for the `pmaped` function of course because `pmap` is an implicit parallel call")
 
 ```python
 curr_id = jax.process_index()
@@ -443,18 +439,25 @@ When we visualize the shardings we see the sharding layout 8 times for each gpus
 └───────────────┘
 ```
 
-If we check if the sharding is addressable we get `True`, our 8 part arrays are also `fully_replicated` which we mentionend in [Sharding Properties](#sharding-properties) which means that each device has a complete copy of the entire data which is not our case, the global data is split among 8 devices. So what is really happening.
+If we check if the sharding is addressable we get `True`, our 8 part arrays are also `fully_replicated` which we mentioned in [Sharding Properties](#sharding-properties) which means that each device has a complete copy of the entire data, but in our case, the global data is split among 8 devices. So what is really happening.
 
-In case of multi controller each code is called `n` times as we mentionned before, so this line 
+In case of multi-controller, each code is called `n` times as we mentioned before, so this line 
 
 ```python
 xs = jax.numpy.ones(jax.local_device_count())
 ```
 
-Is called n times and each of the devices is allocating a slice of the data that is fully addressable and fully replicable for each controller, but they are not globally.\
-In other words each process can access it's data so it is addressable for this given process and it has a full copy of its data so it's replicable for this given process.
-
-What does this mean for sharding reshape like we did earler?
+try:
+    sharding = PositionalSharding(mesh_utils.create_device_mesh((jax.device_count(),)))
+    # Create an array of random values:
+    x = jax.random.normal(jax.random.PRNGKey(0), (4096, 4096))
+    jax.debug.visualize_array_sharding(x)
+    multihost_utils.sync_global_devices("sync")
+    # and use jax.make_array_from_single_device_arrays to distribute it across devices:
+    y = jax.make_array_from_single_device_arrays(x, sharding.reshape(4, 2))
+    #jax.debug.visualize_array_sharding(y)
+except Exception as e:
+    print(f"PositionalSharding error: {e}")
 
 ## 5.3. Classic PositionalSharding in Multi-controller setup
 
@@ -695,9 +698,9 @@ print(transposed_arr.addressable_shards[0].data.shape) #(64, 32)
 
 <h1 style="font-size: 30px;">Very sharp edge 🔪</h1>
 
-This did work as intented but we have to keep in mind that`array = np.random.normal(size=(128, 128))` is excecuted 8 times and in case of a huge data set this is a serious bottleneck and a memory overuse issue.
+This did work as intended but we have to keep in mind that `array = np.random.normal(size=(128, 128))` is executed 8 times and in case of a huge dataset, this is a serious bottleneck and a memory overuse issue.
 
-Unfortunalty lax does not provide `pscatter` and `pbroadcast` it does provide `ppermute` but it will a pain to implement (and more importatnly inefficient)
+Unfortunately, JAX does not provide `pscatter` and `pbroadcast`. It does provide `ppermute`, but it will be a pain to implement (and more importantly, inefficient).
 
 
 In this case we can use MPI collectives :
