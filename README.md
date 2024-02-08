@@ -445,7 +445,6 @@ In case of multi-controller, each code is called `n` times as we mentioned befor
 
 ```python
 xs = jax.numpy.ones(jax.local_device_count())
-```
 
 try:
     sharding = PositionalSharding(mesh_utils.create_device_mesh((jax.device_count(),)))
@@ -458,6 +457,7 @@ try:
     #jax.debug.visualize_array_sharding(y)
 except Exception as e:
     print(f"PositionalSharding error: {e}")
+```
 
 ## 5.3. Classic PositionalSharding in Multi-controller setup
 
