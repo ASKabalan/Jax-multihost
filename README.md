@@ -816,14 +816,20 @@ def split_array(arr, splits, axis=0):
 def create_and_scatter_numpy_array(func:callable,split_shape, **kwargs):
     
     array_split = None
+    array_shape = None
     if rank == 0:
         # Allocate the array on the root process
         array = func(**kwargs)
-        array_split = split_array(array,split_shape )
+        # Get the shape to be broadcaster later
+        array_shape = array.shape
+        # Split according to the specified decomposition
+        array_split = split_array(array,split_shape)
+
     # Split the array into 8 pieces on the root process
     array_piece = comm.scatter(array_split, root=0)
+    array_shape = comm.bcast(array_shape, root=0)
 
-    return array_piece
+    return array_piece, array_shape
 
 
 sharding_shape = (4,2)
